@@ -8,91 +8,75 @@ import {
   checkPassword,
   hashPassword,
 } from "./auth.js";
+import { body, validationResult } from "express-validator";
 
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: "http://localhost:5173" }));
+app.use(cors());
 app.use(express.json());
+
+const db = await connectToDatabase();
+const users = db.collection("users");
 
 const PORT = process.env.PORT || 3000;
 
-let db, usersCol;
-try {
-  db = await connectToDatabase();
-  usersCol = db.collection("users");
-  await usersCol.createIndex({ username: 1 }, { unique: true });
-  console.log("MongoDB connected & users index ensured");
-} catch (err) {
-  console.error("DB connection error:", err.message);
-  process.exit(1);
-}
-
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-app.post("/api/register", async (req, res) => {
-  try {
-    const { username, password } = req.body || {};
-    if (!username || !password) {
-      return res
-        .status(400)
-        .json({ message: "username i password su obavezni" });
+app.post(
+  "/api/register",
+  [
+    body("username").notEmpty().withMessage("Username is required"),
+    body("password")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 chars long"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const exists = await usersCol.findOne({ username });
-    if (exists) {
-      return res.status(409).json({ message: "Korisnik već postoji" });
-    }
+    const { username, password } = req.body;
 
-    const passwordHash = await hashPassword(password);
-    if (!passwordHash) {
-      return res.status(500).json({ message: "Greška pri hashiranju lozinke" });
-    }
+    const existingUser = await users.findOne({ username });
+    if (existingUser)
+      return res.status(400).json({ message: "User already exists" });
 
-    const { insertedId } = await usersCol.insertOne({
-      username,
-      password: passwordHash,
-      createdAt: new Date(),
-    });
+    const hashed = await hashPassword(password);
+    await users.insertOne({ username, password: hashed });
 
-    const token = generateJWT({ id: insertedId, username });
-    return res.status(201).json({ id: insertedId, username, token });
-  } catch (err) {
-    if (err?.code === 11000) {
-      return res.status(409).json({ message: "Korisnik već postoji" });
-    }
-    console.error(err);
-    return res.status(500).json({ message: "Interna greška poslužitelja" });
+    const token = generateJWT({ username });
+    res.json({ message: "User registered successfully", token });
   }
-});
+);
 
-app.post("/api/login", async (req, res) => {
-  try {
-    const { username, password } = req.body || {};
-    if (!username || !password) {
-      return res
-        .status(400)
-        .json({ message: "username i password su obavezni" });
+app.post(
+  "/api/login",
+  [
+    body("username").notEmpty().withMessage("Username is required"),
+    body("password").notEmpty().withMessage("Password is required"),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const user = await usersCol.findOne({ username });
+    const { username, password } = req.body;
+    const user = await users.findOne({ username });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const ok = await checkPassword(password, user.password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = generateJWT({ id: user._id, username: user.username });
-    return res.json({ token });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Interna greška poslužitelja" });
+    const token = generateJWT({ username });
+    res.json({ token });
   }
-});
+);
 
 app.get("/api/protected", authMiddleware, (req, res) => {
   res.json({ message: `Pozdrav ${req.user.username}, imate pristup!` });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`Server running on http://localhost:${PORT}`)
+);
