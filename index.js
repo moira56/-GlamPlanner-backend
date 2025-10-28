@@ -3,12 +3,14 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { connectToDatabase } from "./db.js";
 
-import authRoutes from "./rute/authRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 import { authMiddleware } from "./middlewares/authMiddleware.js";
 
 dotenv.config();
 
 const app = express();
+
 app.use(cors({ origin: "http://localhost:5173" }));
 app.use(express.json());
 
@@ -29,6 +31,8 @@ try {
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api", authRoutes);
+
+app.use("/api", uploadRoutes);
 
 app.get("/api/protected", authMiddleware, (req, res) => {
   res.json({ message: `Pozdrav ${req.user.username}, imate pristup!` });
