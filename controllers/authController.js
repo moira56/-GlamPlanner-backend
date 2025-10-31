@@ -7,55 +7,78 @@ import {
 export const AuthController = {
   async register(req, res) {
     try {
-      const { username, password } = req.body || {};
-      if (!username || !password) {
-        return res
-          .status(400)
-          .json({ message: "username i password su obavezni" });
-      }
+      const users = req.app.locals?.users;
+      if (!users)
+        return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
-      const users = req.app.locals.users;
-      const exists = await users.findOne({ username });
-      if (exists)
-        return res.status(409).json({ message: "Korisnik već postoji" });
+      const { email, username, password } = req.body;
 
-      const passwordHash = await hashPassword(password);
-      const { insertedId } = await users.insertOne({
-        username,
-        password: passwordHash,
-        createdAt: new Date(),
+      const existing = await users.findOne({
+        $or: [{ email }, { username }],
       });
 
-      const token = generateJWT({ id: insertedId, username });
-      return res.status(201).json({ id: insertedId, username, token });
+      if (existing) {
+        if (existing.email === email)
+          return res.status(400).json({ message: "Email je već u uporabi" });
+        if (existing.username === username)
+          return res.status(400).json({ message: "Korisničko ime je zauzeto" });
+        return res.status(400).json({ message: "Korisnik već postoji" });
+      }
+
+      const passwordHash = await hashPassword(password);
+      const now = new Date();
+
+      const insert = await users.insertOne({
+        email,
+        username,
+        password: passwordHash,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const payload = { id: insert.insertedId, email, username };
+      const token = generateJWT(payload);
+
+      return res.status(201).json({
+        message: "Korisnik uspješno registriran",
+        token,
+        user: { id: insert.insertedId, email, username },
+      });
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Greška pri registraciji" });
+      console.error("Register error:", err);
+      return res.status(500).json({ message: "Greška na poslužitelju" });
     }
   },
 
   async login(req, res) {
     try {
-      const { username, password } = req.body || {};
-      if (!username || !password) {
-        return res
-          .status(400)
-          .json({ message: "username i password su obavezni" });
-      }
+      const users = req.app.locals?.users;
+      if (!users)
+        return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
-      const users = req.app.locals.users;
-      const user = await users.findOne({ username });
-      if (!user)
-        return res.status(401).json({ message: "Invalid credentials" });
+      const { email, username, password } = req.body;
+
+      const query = email ? { email } : { username };
+
+      const user = await users.findOne(query);
+      if (!user) return res.status(401).json({ message: "Neispravni podaci" });
 
       const ok = await checkPassword(password, user.password);
-      if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+      if (!ok) return res.status(401).json({ message: "Neispravni podaci" });
 
-      const token = generateJWT({ id: user._id, username: user.username });
-      return res.json({ token, username: user.username });
+      const token = generateJWT({
+        id: user._id,
+        email: user.email,
+        username: user.username,
+      });
+
+      return res.json({
+        token,
+        user: { id: user._id, email: user.email, username: user.username },
+      });
     } catch (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Greška pri prijavi" });
+      console.error("Login error:", err);
+      return res.status(500).json({ message: "Greška na poslužitelju" });
     }
   },
 };

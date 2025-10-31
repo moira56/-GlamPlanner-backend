@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { body, validationResult } from "express-validator";
+import { body, validationResult, oneOf } from "express-validator";
 import { AuthController } from "../controllers/authController.js";
 
 const router = Router();
@@ -14,10 +14,29 @@ function validate(req, res, next) {
 router.post(
   "/register",
   [
-    body("username").trim().notEmpty().withMessage("Username is required"),
+    body("email")
+      .trim()
+      .notEmpty()
+      .withMessage("Email je obavezan")
+      .isEmail()
+      .withMessage("Molimo unesite ispravan email"),
+
+    body("username")
+      .trim()
+      .notEmpty()
+      .withMessage("Korisničko ime je obavezno")
+      .isAlphanumeric()
+      .withMessage("Korisničko ime smije sadržavati samo slova i brojeve")
+      .isLength({ min: 3 })
+      .withMessage("Korisničko ime mora imati najmanje 3 znaka"),
+
     body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters"),
+      .notEmpty()
+      .withMessage("Lozinka je obavezna")
+      .matches(/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/)
+      .withMessage(
+        "Lozinka mora imati min 8 znakova, barem jedno slovo i jedan broj"
+      ),
   ],
   validate,
   AuthController.register
@@ -26,8 +45,14 @@ router.post(
 router.post(
   "/login",
   [
-    body("username").trim().notEmpty().withMessage("Username is required"),
-    body("password").notEmpty().withMessage("Password is required"),
+    oneOf(
+      [
+        body("email").isEmail(),
+        body("username").isAlphanumeric().isLength({ min: 3 }),
+      ],
+      "Unesite valjan email ili korisničko ime"
+    ),
+    body("password").notEmpty().withMessage("Lozinka je obavezna"),
   ],
   validate,
   AuthController.login

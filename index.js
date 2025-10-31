@@ -20,9 +20,12 @@ let db, usersCol;
 try {
   db = await connectToDatabase();
   usersCol = db.collection("users");
+
   await usersCol.createIndex({ username: 1 }, { unique: true });
+  await usersCol.createIndex({ email: 1 }, { unique: true });
+
   app.locals.users = usersCol;
-  console.log("MongoDB connected & users index ensured");
+  console.log("MongoDB connected & indexes ensured (username, email)");
 } catch (err) {
   console.error("DB connection error:", err.message);
   process.exit(1);
@@ -31,13 +34,12 @@ try {
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api", authRoutes);
-
 app.use("/api", uploadRoutes);
 
 app.get("/api/protected", authMiddleware, (req, res) => {
   res.json({ message: `Pozdrav ${req.user.username}, imate pristup!` });
 });
 
-app.listen(PORT, () =>
-  console.log(`Server running on http://localhost:${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
