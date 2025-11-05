@@ -11,7 +11,7 @@ export const AuthController = {
       if (!users)
         return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
-      const { email, username, password } = req.body;
+      const { email, username, password, role } = req.body;
 
       const existing = await users.findOne({
         $or: [{ email }, { username }],
@@ -28,21 +28,30 @@ export const AuthController = {
       const passwordHash = await hashPassword(password);
       const now = new Date();
 
+      const userRole =
+        role && role.toLowerCase() === "admin" ? "admin" : "user";
+
       const insert = await users.insertOne({
         email,
         username,
         password: passwordHash,
+        role: userRole,
         createdAt: now,
         updatedAt: now,
       });
 
-      const payload = { id: insert.insertedId, email, username };
+      const payload = {
+        id: insert.insertedId,
+        email,
+        username,
+        role: userRole,
+      };
       const token = generateJWT(payload);
 
       return res.status(201).json({
         message: "Korisnik uspješno registriran",
         token,
-        user: { id: insert.insertedId, email, username },
+        user: { id: insert.insertedId, email, username, role: userRole },
       });
     } catch (err) {
       console.error("Register error:", err);
@@ -57,7 +66,6 @@ export const AuthController = {
         return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
       const { email, username, password } = req.body;
-
       const query = email ? { email } : { username };
 
       const user = await users.findOne(query);
@@ -70,11 +78,17 @@ export const AuthController = {
         id: user._id,
         email: user.email,
         username: user.username,
+        role: user.role || "user",
       });
 
       return res.json({
         token,
-        user: { id: user._id, email: user.email, username: user.username },
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          role: user.role || "user",
+        },
       });
     } catch (err) {
       console.error("Login error:", err);

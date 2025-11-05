@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { body, validationResult, oneOf } from "express-validator";
 import { AuthController } from "../controllers/authController.js";
+import { authMiddleware, isAdmin } from "../middlewares/authMiddleware.js";
 
 const router = Router();
 
@@ -37,6 +38,11 @@ router.post(
       .withMessage(
         "Lozinka mora imati min 8 znakova, barem jedno slovo i jedan broj"
       ),
+
+    body("role")
+      .optional()
+      .isIn(["admin", "user"])
+      .withMessage("Role mora biti 'admin' ili 'user'"),
   ],
   validate,
   AuthController.register
@@ -57,5 +63,25 @@ router.post(
   validate,
   AuthController.login
 );
+
+router.get("/admin/users", authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const users = req.app.locals?.users;
+    if (!users)
+      return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+
+    const allUsers = await users
+      .find({}, { projection: { password: 0 } })
+      .toArray();
+
+    res.json({
+      message: "Svi korisnici (samo admin može ovo vidjeti)",
+      users: allUsers,
+    });
+  } catch (err) {
+    console.error("Admin users error:", err);
+    res.status(500).json({ message: "Greška pri dohvaćanju korisnika" });
+  }
+});
 
 export default router;
