@@ -6,6 +6,7 @@ import { connectToDatabase } from "./db.js";
 import authRoutes from "./routes/authRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import { authMiddleware } from "./middlewares/authMiddleware.js";
+import galleryRoutes from "./routes/galleryRoutes.js";
 
 dotenv.config();
 
@@ -21,6 +22,8 @@ try {
   db = await connectToDatabase();
   usersCol = db.collection("users");
 
+  app.locals.db = db;
+
   await usersCol.createIndex({ username: 1 }, { unique: true });
   await usersCol.createIndex({ email: 1 }, { unique: true });
 
@@ -35,6 +38,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api", authRoutes);
 app.use("/api", uploadRoutes);
+app.use("/api/gallery", galleryRoutes);
 
 app.get("/api/protected", authMiddleware, (req, res) => {
   res.json({ message: `Pozdrav ${req.user.username}, imate pristup!` });
