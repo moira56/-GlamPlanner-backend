@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb";
 import {
   hashPassword,
   checkPassword,
@@ -27,7 +28,6 @@ export const AuthController = {
 
       const passwordHash = await hashPassword(password);
       const now = new Date();
-
       const userRole =
         role && role.toLowerCase() === "admin" ? "admin" : "user";
 
@@ -38,6 +38,9 @@ export const AuthController = {
         role: userRole,
         createdAt: now,
         updatedAt: now,
+        firstName: "",
+        lastName: "",
+        avatarUrl: "",
       });
 
       const payload = {
@@ -51,7 +54,12 @@ export const AuthController = {
       return res.status(201).json({
         message: "Korisnik uspješno registriran",
         token,
-        user: { id: insert.insertedId, email, username, role: userRole },
+        user: {
+          id: insert.insertedId,
+          email,
+          username,
+          role: userRole,
+        },
       });
     } catch (err) {
       console.error("Register error:", err);
@@ -93,6 +101,74 @@ export const AuthController = {
     } catch (err) {
       console.error("Login error:", err);
       return res.status(500).json({ message: "Greška na poslužitelju" });
+    }
+  },
+
+  async getMe(req, res) {
+    try {
+      const users = req.app.locals?.users;
+      if (!users)
+        return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+
+      const user = await users.findOne(
+        { _id: new ObjectId(req.user.id) },
+        { projection: { password: 0 } }
+      );
+
+      if (!user)
+        return res.status(404).json({ message: "Korisnik nije pronađen" });
+
+      res.json({
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        avatarUrl: user.avatarUrl || "",
+        role: user.role || "user",
+      });
+    } catch (err) {
+      console.error("Greška u getMe:", err);
+      res.status(500).json({ message: "Greška pri dohvaćanju korisnika" });
+    }
+  },
+
+  async updateMe(req, res) {
+    try {
+      const users = req.app.locals?.users;
+      if (!users)
+        return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+
+      const { firstName, lastName, avatarUrl } = req.body || {};
+
+      const updateDoc = {
+        $set: {
+          firstName: firstName || "",
+          lastName: lastName || "",
+          avatarUrl: avatarUrl || "",
+          updatedAt: new Date(),
+        },
+      };
+
+      const result = await users.findOneAndUpdate(
+        { _id: new ObjectId(req.user.id) },
+        updateDoc,
+        { returnDocument: "after", projection: { password: 0 } }
+      );
+
+      if (!result.value)
+        return res.status(404).json({ message: "Korisnik nije pronađen" });
+
+      res.json({
+        username: result.value.username,
+        email: result.value.email,
+        firstName: result.value.firstName,
+        lastName: result.value.lastName,
+        avatarUrl: result.value.avatarUrl,
+        role: result.value.role || "user",
+      });
+    } catch (err) {
+      console.error("Greška u updateMe:", err);
+      res.status(500).json({ message: "Greška pri ažuriranju korisnika" });
     }
   },
 };

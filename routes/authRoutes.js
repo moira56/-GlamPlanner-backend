@@ -7,8 +7,9 @@ const router = Router();
 
 function validate(req, res, next) {
   const errors = validationResult(req);
-  if (!errors.isEmpty())
+  if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
+  }
   next();
 }
 
@@ -64,11 +65,47 @@ router.post(
   AuthController.login
 );
 
+router.get("/me", authMiddleware, AuthController.getMe);
+
+const meValidators = [
+  body("firstName")
+    .optional()
+    .isString()
+    .isLength({ max: 100 })
+    .withMessage("firstName smije imati najviše 100 znakova"),
+  body("lastName")
+    .optional()
+    .isString()
+    .isLength({ max: 100 })
+    .withMessage("lastName smije imati najviše 100 znakova"),
+  body("avatarUrl")
+    .optional()
+    .isURL()
+    .withMessage("avatarUrl mora biti valjan URL"),
+];
+
+router.patch(
+  "/me",
+  authMiddleware,
+  meValidators,
+  validate,
+  AuthController.updateMe
+);
+
+router.put(
+  "/me",
+  authMiddleware,
+  meValidators,
+  validate,
+  AuthController.updateMe
+);
+
 router.get("/admin/users", authMiddleware, isAdmin, async (req, res) => {
   try {
     const users = req.app.locals?.users;
-    if (!users)
+    if (!users) {
       return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+    }
 
     const allUsers = await users
       .find({}, { projection: { password: 0 } })
