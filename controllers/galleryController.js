@@ -1,36 +1,92 @@
 import { ObjectId } from "mongodb";
+import { searchImages } from "../services/cloudinaryService.js";
+
+function parseTagsParam(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+  }
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) {
+        return arr.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+      }
+    } catch {}
+    return s
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 export const GalleryController = {
   async getAll(req, res) {
     try {
+      const tags = parseTagsParam(req.query.tags);
+      const q = req.query.q || "";
+      const cursor = req.query.cursor || undefined;
+      const pageSize = Math.min(parseInt(req.query.pageSize || "24", 10), 50);
+
+      if (tags.length || q || cursor) {
+        const data = await searchImages({
+          tags,
+          q,
+          cursor,
+          pageSize,
+        });
+        return res.json({ ok: true, source: "cloudinary", ...data });
+      }
+
       const galleryCol = req.app.locals.db.collection("gallery");
       const images = await galleryCol.find().sort({ createdAt: -1 }).toArray();
-      res.json(images);
+      return res.json({
+        ok: true,
+        source: "mongo",
+        items: images,
+        nextCursor: null,
+      });
     } catch (err) {
       console.error("Greška pri dohvaćanju slika:", err);
-      res.status(500).json({ message: "Greška pri dohvaćanju slika" });
+      res
+        .status(500)
+        .json({ ok: false, message: "Greška pri dohvaćanju slika" });
     }
   },
 
   async add(req, res) {
     try {
-      const { url, desc, user } = req.body;
+      const { url, desc, user, publicId } = req.body || {};
       if (!url)
         return res.status(400).json({ message: "URL slike je obavezan" });
+
+      const tags = parseTagsParam(req.body?.tags);
+      const context =
+        typeof req.body?.context === "string"
+          ? (() => {
+              try {
+                return JSON.parse(req.body.context);
+              } catch {
+                return {};
+              }
+            })()
+          : req.body?.context || {};
 
       const galleryCol = req.app.locals.db.collection("gallery");
       const newImg = {
         url,
+        publicId: publicId || null,
         desc: desc || "Bez opisa.",
         user: user || "Nepoznato",
+        tags,
+        context,
         createdAt: new Date(),
       };
 
       const result = await galleryCol.insertOne(newImg);
-      res.status(201).json({
-        _id: result.insertedId,
-        ...newImg,
-      });
+      res.status(201).json({ _id: result.insertedId, ...newImg });
     } catch (err) {
       console.error("Greška pri dodavanju slike:", err);
       res.status(500).json({ message: "Greška pri dodavanju slike" });
