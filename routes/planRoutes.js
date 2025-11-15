@@ -22,4 +22,12 @@ router.post(
   PlanController.respondToPlan
 );
 
+router.delete("/:id", authMiddleware, isAdmin, PlanController.deletePlan);
+
+router.delete(
+  "/:planId/replies/:replyId",
+  authMiddleware,
+  PlanController.deleteReply
+);
+
 export default router;
