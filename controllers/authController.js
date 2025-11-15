@@ -171,4 +171,41 @@ export const AuthController = {
       res.status(500).json({ message: "Greška pri ažuriranju korisnika" });
     }
   },
+
+  async getAdmins(req, res) {
+    try {
+      const users = req.app.locals?.users;
+      if (!users)
+        return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+
+      const adminsCursor = users.find(
+        { role: "admin" },
+        {
+          projection: {
+            password: 0,
+          },
+        }
+      );
+
+      const adminsRaw = await adminsCursor.toArray();
+
+      const admins = adminsRaw.map((u) => ({
+        _id: u._id,
+        id: u._id,
+        username: u.username,
+        email: u.email,
+        firstName: u.firstName || "",
+        lastName: u.lastName || "",
+        avatarUrl: u.avatarUrl || "",
+        role: u.role || "admin",
+      }));
+
+      return res.json(admins);
+    } catch (err) {
+      console.error("Greška u getAdmins:", err);
+      return res
+        .status(500)
+        .json({ message: "Greška pri dohvaćanju admin korisnika" });
+    }
+  },
 };

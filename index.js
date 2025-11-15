@@ -7,6 +7,7 @@ import authRoutes from "./routes/authRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import { authMiddleware } from "./middlewares/authMiddleware.js";
 import galleryRoutes from "./routes/galleryRoutes.js";
+import planRoutes from "./routes/planRoutes.js";
 
 dotenv.config();
 
@@ -17,18 +18,24 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-let db, usersCol;
+let db, usersCol, plansCol;
 try {
   db = await connectToDatabase();
   usersCol = db.collection("users");
+  plansCol = db.collection("plans");
 
   app.locals.db = db;
 
   await usersCol.createIndex({ username: 1 }, { unique: true });
   await usersCol.createIndex({ email: 1 }, { unique: true });
 
+  await plansCol.createIndex({ adminId: 1, createdAt: -1 });
+  await plansCol.createIndex({ userId: 1, createdAt: -1 });
+
   app.locals.users = usersCol;
-  console.log("MongoDB connected & indexes ensured (username, email)");
+  app.locals.plans = plansCol;
+
+  console.log("MongoDB connected & indexes ensured (username, email, plans)");
 } catch (err) {
   console.error("DB connection error:", err.message);
   process.exit(1);
@@ -39,6 +46,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api", uploadRoutes);
 app.use("/api/gallery", galleryRoutes);
+app.use("/api/plans", planRoutes);
 
 app.get("/api/protected", authMiddleware, (req, res) => {
   res.json({ message: `Pozdrav ${req.user.username}, imate pristup!` });

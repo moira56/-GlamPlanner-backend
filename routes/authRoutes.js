@@ -100,6 +100,8 @@ router.put(
   AuthController.updateMe
 );
 
+router.get("/admins", authMiddleware, AuthController.getAdmins);
+
 router.get("/admin/users", authMiddleware, isAdmin, async (req, res) => {
   try {
     const users = req.app.locals?.users;
