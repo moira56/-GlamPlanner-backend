@@ -111,7 +111,7 @@ export const AuthController = {
         return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
       const user = await users.findOne(
-        { _id: new ObjectId(req.user.id) },
+        { email: req.user.email },
         { projection: { password: 0 } }
       );
 
@@ -150,7 +150,7 @@ export const AuthController = {
       };
 
       const result = await users.findOneAndUpdate(
-        { _id: new ObjectId(req.user.id) },
+        { email: req.user.email },
         updateDoc,
         { returnDocument: "after", projection: { password: 0 } }
       );

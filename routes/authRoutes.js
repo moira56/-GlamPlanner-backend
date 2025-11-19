@@ -3,6 +3,8 @@ import { body, validationResult, oneOf } from "express-validator";
 import { AuthController } from "../controllers/authController.js";
 import { authMiddleware, isAdmin } from "../middlewares/authMiddleware.js";
 
+console.log("authRoutes loaded");
+
 const router = Router();
 
 function validate(req, res, next) {
@@ -99,6 +101,10 @@ router.put(
   validate,
   AuthController.updateMe
 );
+
+router.patch("/me-test", (req, res) => {
+  res.json({ ok: true, route: "PATCH /api/auth/me-test" });
+});
 
 router.get("/admins", authMiddleware, AuthController.getAdmins);
 
