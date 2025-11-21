@@ -5,6 +5,27 @@ import {
   generateJWT,
 } from "../services/authService.js";
 
+function toObjectId(raw) {
+  try {
+    if (!raw) return null;
+    if (raw instanceof ObjectId) return raw;
+
+    if (typeof raw === "string") {
+      return new ObjectId(raw);
+    }
+
+    if (typeof raw === "object") {
+      if (raw.$oid) return new ObjectId(raw.$oid);
+      if (raw.id) return new ObjectId(raw.id.toString());
+      if (raw._id) return new ObjectId(raw._id.toString());
+    }
+
+    return new ObjectId(raw.toString());
+  } catch {
+    return null;
+  }
+}
+
 export const AuthController = {
   async register(req, res) {
     try {
@@ -44,7 +65,7 @@ export const AuthController = {
       });
 
       const payload = {
-        id: insert.insertedId,
+        id: insert.insertedId.toString(),
         email,
         username,
         role: userRole,
@@ -55,7 +76,7 @@ export const AuthController = {
         message: "Korisnik uspješno registriran",
         token,
         user: {
-          id: insert.insertedId,
+          id: insert.insertedId.toString(),
           email,
           username,
           role: userRole,
@@ -83,7 +104,7 @@ export const AuthController = {
       if (!ok) return res.status(401).json({ message: "Neispravni podaci" });
 
       const token = generateJWT({
-        id: user._id,
+        id: user._id.toString(),
         email: user.email,
         username: user.username,
         role: user.role || "user",
@@ -92,7 +113,7 @@ export const AuthController = {
       return res.json({
         token,
         user: {
-          id: user._id,
+          id: user._id.toString(),
           email: user.email,
           username: user.username,
           role: user.role || "user",
@@ -110,10 +131,13 @@ export const AuthController = {
       if (!users)
         return res.status(500).json({ message: "DB kolekcija nije dostupna" });
 
-      const user = await users.findOne(
-        { email: req.user.email },
-        { projection: { password: 0 } }
-      );
+      const userId = toObjectId(req.user.id);
+
+      const query = userId ? { _id: userId } : { email: req.user.email };
+
+      const user = await users.findOne(query, {
+        projection: { password: 0 },
+      });
 
       if (!user)
         return res.status(404).json({ message: "Korisnik nije pronađen" });
@@ -135,36 +159,41 @@ export const AuthController = {
   async updateMe(req, res) {
     try {
       const users = req.app.locals?.users;
-      if (!users)
+      if (!users) {
         return res.status(500).json({ message: "DB kolekcija nije dostupna" });
+      }
+
+      const userId = toObjectId(req.user.id);
+      const query = { _id: userId };
 
       const { firstName, lastName, avatarUrl } = req.body || {};
 
-      const updateDoc = {
+      const updateResult = await users.updateOne(query, {
         $set: {
           firstName: firstName || "",
           lastName: lastName || "",
           avatarUrl: avatarUrl || "",
           updatedAt: new Date(),
         },
-      };
+      });
 
-      const result = await users.findOneAndUpdate(
-        { email: req.user.email },
-        updateDoc,
-        { returnDocument: "after", projection: { password: 0 } }
-      );
+      if (updateResult.matchedCount === 0) {
+        return res
+          .status(404)
+          .json({ message: "Korisnik za ažuriranje nije pronađen." });
+      }
 
-      if (!result.value)
-        return res.status(404).json({ message: "Korisnik nije pronađen" });
+      const updatedUser = await users.findOne(query, {
+        projection: { password: 0 },
+      });
 
       res.json({
-        username: result.value.username,
-        email: result.value.email,
-        firstName: result.value.firstName,
-        lastName: result.value.lastName,
-        avatarUrl: result.value.avatarUrl,
-        role: result.value.role || "user",
+        username: updatedUser.username,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        avatarUrl: updatedUser.avatarUrl,
+        role: updatedUser.role || "user",
       });
     } catch (err) {
       console.error("Greška u updateMe:", err);
