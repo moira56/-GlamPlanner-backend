@@ -5,16 +5,13 @@ import { authMiddleware, isAdmin } from "../middlewares/authMiddleware.js";
 const router = Router();
 
 router.post("/", authMiddleware, PlanController.createPlanRequest);
-
 router.get("/user", authMiddleware, PlanController.getMyPlanRequestsAsUser);
-
 router.get(
   "/admin",
   authMiddleware,
   isAdmin,
   PlanController.getMyPlanRequestsAsAdmin
 );
-
 router.post(
   "/:id/replies",
   authMiddleware,
@@ -22,12 +19,12 @@ router.post(
   PlanController.respondToPlan
 );
 
-router.delete("/:id", authMiddleware, isAdmin, PlanController.deletePlan);
+router.post("/:id/hide", authMiddleware, PlanController.hidePlan);
 
-router.delete(
-  "/:planId/replies/:replyId",
+router.post(
+  "/:planId/replies/:replyId/hide",
   authMiddleware,
-  PlanController.deleteReply
+  PlanController.hideReply
 );
 
 export default router;

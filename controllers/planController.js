@@ -18,7 +18,6 @@ export const PlanController = {
       }
 
       const adminObjectId = new ObjectId(adminId);
-
       const admin = await users.findOne({ _id: adminObjectId });
       if (!admin || admin.role !== "admin") {
         return res.status(400).json({ message: "Odabrani admin ne postoji" });
@@ -38,14 +37,11 @@ export const PlanController = {
         createdAt: new Date(),
         updatedAt: new Date(),
         replies: [],
+        hiddenBy: [],
       };
 
       const insert = await plans.insertOne(doc);
-
-      return res.status(201).json({
-        id: insert.insertedId,
-        ...doc,
-      });
+      return res.status(201).json({ id: insert.insertedId, ...doc });
     } catch (err) {
       console.error("Greška u createPlanRequest:", err);
       return res
@@ -66,11 +62,13 @@ export const PlanController = {
       const adminObjectId = new ObjectId(req.user.id);
 
       const cursor = plans
-        .find({ adminId: adminObjectId })
+        .find({
+          adminId: adminObjectId,
+          hiddenBy: { $ne: adminObjectId },
+        })
         .sort({ createdAt: -1 });
 
       const list = await cursor.toArray();
-
       return res.json(list);
     } catch (err) {
       console.error("Greška u getMyPlanRequestsAsAdmin:", err);
@@ -92,11 +90,13 @@ export const PlanController = {
       const userObjectId = new ObjectId(req.user.id);
 
       const cursor = plans
-        .find({ userId: userObjectId })
+        .find({
+          userId: userObjectId,
+          hiddenBy: { $ne: userObjectId },
+        })
         .sort({ createdAt: -1 });
 
       const list = await cursor.toArray();
-
       return res.json(list);
     } catch (err) {
       console.error("Greška u getMyPlanRequestsAsUser:", err);
@@ -124,16 +124,8 @@ export const PlanController = {
           .json({ message: "Poruka za odgovor je obavezna" });
       }
 
-      const possibleIds = [];
-      if (ObjectId.isValid(id)) possibleIds.push(new ObjectId(id));
-      possibleIds.push(id);
-
-      const filter =
-        possibleIds.length === 1
-          ? { _id: possibleIds[0] }
-          : { _id: { $in: possibleIds } };
-
-      const existing = await plans.findOne(filter);
+      const planId = new ObjectId(id);
+      const existing = await plans.findOne({ _id: planId });
       if (!existing) {
         return res.status(404).json({ message: "Plan nije pronađen" });
       }
@@ -149,6 +141,7 @@ export const PlanController = {
         message: message.trim(),
         imageUrls: images,
         createdAt: new Date(),
+        hiddenBy: [],
       };
 
       await plans.updateOne(
@@ -160,7 +153,6 @@ export const PlanController = {
       );
 
       const updated = await plans.findOne({ _id: existing._id });
-
       return res.json(updated);
     } catch (err) {
       console.error("Greška u respondToPlan:", err);
@@ -170,7 +162,7 @@ export const PlanController = {
     }
   },
 
-  async deletePlan(req, res) {
+  async hidePlan(req, res) {
     try {
       const plans = req.app.locals?.plans;
       if (!plans) {
@@ -180,23 +172,26 @@ export const PlanController = {
       }
 
       const { id } = req.params;
-      const planId = ObjectId.isValid(id) ? new ObjectId(id) : id;
+      const planId = new ObjectId(id);
+      const userId = new ObjectId(req.user.id);
 
-      const existing = await plans.findOne({ _id: planId });
-      if (!existing) {
+      const result = await plans.updateOne(
+        { _id: planId },
+        { $addToSet: { hiddenBy: userId } }
+      );
+
+      if (result.matchedCount === 0) {
         return res.status(404).json({ message: "Plan nije pronađen" });
       }
 
-      await plans.deleteOne({ _id: existing._id });
-
-      return res.json({ message: "Plan je obrisan" });
+      return res.json({ message: "Upit je skriven" });
     } catch (err) {
-      console.error("Greška u deletePlan:", err);
-      return res.status(500).json({ message: "Greška pri brisanju plana" });
+      console.error("Greška u hidePlan:", err);
+      return res.status(500).json({ message: "Greška pri skrivanju upita" });
     }
   },
 
-  async deleteReply(req, res) {
+  async hideReply(req, res) {
     try {
       const plans = req.app.locals?.plans;
       if (!plans) {
@@ -206,49 +201,41 @@ export const PlanController = {
       }
 
       const { planId, replyId } = req.params;
-      const planKey = ObjectId.isValid(planId) ? new ObjectId(planId) : planId;
+      const pId = new ObjectId(planId);
+      const rId = new ObjectId(replyId);
+      const user = req.user;
 
-      const plan = await plans.findOne({ _id: planKey });
+      const plan = await plans.findOne({ _id: pId });
       if (!plan) {
-        return res.status(404).json({ message: "Plan nije pronađen" });
+        return res.status(404).json({ message: "Upit nije pronađen." });
       }
 
-      const reply = (plan.replies || []).find(
-        (r) => r._id?.toString() === replyId
-      );
-      if (!reply) {
-        return res.status(404).json({ message: "Odgovor nije pronađen" });
-      }
-
-      const isAdminUser = req.user.role === "admin";
-
-      if (isAdminUser) {
-        if (reply.adminId?.toString() !== req.user.id) {
-          return res
-            .status(403)
-            .json({ message: "Nemaš dozvolu za brisanje ovog odgovora" });
-        }
+      if (user.role === "admin") {
+        await plans.updateOne(
+          { _id: pId },
+          { $pull: { replies: { _id: rId } } }
+        );
       } else {
-        if (plan.userId?.toString() !== req.user.id) {
-          return res
-            .status(403)
-            .json({ message: "Nemaš dozvolu za brisanje ovog odgovora" });
-        }
+        const userId = new ObjectId(user.id);
+        await plans.updateOne(
+          { _id: pId, "replies._id": rId },
+          { $addToSet: { "replies.$.hiddenBy": userId } }
+        );
       }
 
-      await plans.updateOne(
-        { _id: plan._id },
-        {
-          $pull: { replies: { _id: reply._id } },
-          $set: { updatedAt: new Date() },
-        }
-      );
+      const updated = await plans.findOne({ _id: pId });
+      if (!updated) {
+        return res
+          .status(404)
+          .json({ message: "Nije moguće dohvatiti ažurirani upit." });
+      }
 
-      const updated = await plans.findOne({ _id: plan._id });
       return res.json(updated);
     } catch (err) {
-      console.error("Greška u deleteReply:", err);
-      return res.status(500).json({ message: "Greška pri brisanju odgovora" });
+      console.error("Greška u hideReply:", err);
+      return res
+        .status(500)
+        .json({ message: "Greška pri rukovanju odgovorom" });
     }
   },
 };
