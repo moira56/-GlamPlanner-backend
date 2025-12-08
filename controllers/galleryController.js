@@ -1,5 +1,4 @@
 import { ObjectId } from "mongodb";
-import { searchImages } from "../services/cloudinaryService.js";
 
 function parseTagsParam(raw) {
   if (!raw) return [];
@@ -26,22 +25,19 @@ export const GalleryController = {
   async getAll(req, res) {
     try {
       const tags = parseTagsParam(req.query.tags);
-      const q = req.query.q || "";
-      const cursor = req.query.cursor || undefined;
-      const pageSize = Math.min(parseInt(req.query.pageSize || "24", 10), 50);
+      const galleryCol = req.app.locals.db.collection("gallery");
 
-      if (tags.length || q || cursor) {
-        const data = await searchImages({
-          tags,
-          q,
-          cursor,
-          pageSize,
-        });
-        return res.json({ ok: true, source: "cloudinary", ...data });
+      const query = {};
+
+      if (tags.length > 0) {
+        query.tags = { $all: tags };
       }
 
-      const galleryCol = req.app.locals.db.collection("gallery");
-      const images = await galleryCol.find().sort({ createdAt: -1 }).toArray();
+      const images = await galleryCol
+        .find(query)
+        .sort({ createdAt: -1 })
+        .toArray();
+
       return res.json({
         ok: true,
         source: "mongo",
