@@ -14,7 +14,25 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors({ origin: "https://glamplanner.netlify.app" }));
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://glamplanner.netlify.app",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg =
+          "CORS pravila za ovu stranicu ne dopuštaju pristup s navedene adrese.";
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+  })
+);
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
